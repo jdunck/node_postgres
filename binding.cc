@@ -22,6 +22,8 @@ class Connection : public EventEmitter {
     t->InstanceTemplate()->SetInternalFieldCount(1);
 
     NODE_SET_PROTOTYPE_METHOD(t, "connect", Connect);
+    NODE_SET_PROTOTYPE_METHOD(t, "reset", Reset);
+    NODE_SET_PROTOTYPE_METHOD(t, "dispatchQuery", DispatchQuery);
 
     t->PrototypeTemplate()->SetAccessor(READY_STATE_SYMBOL, ReadyStateGetter);
 
@@ -103,6 +105,11 @@ class Connection : public EventEmitter {
     Detach();
   }
 
+  char * ErrorMessage ( )
+  {
+    return PQerrorMessage(connection_);
+  }
+
  protected:
 
   static Handle<Value>
@@ -132,7 +139,49 @@ class Connection : public EventEmitter {
     bool r = connection->Connect(*conninfo);
 
     if (!r) {
-      return ThrowException(String::New("Error opening connection."));
+      return ThrowException(Exception::Error(
+            String::New(connection->ErrorMessage())));
+    }
+
+    return Undefined();
+  }
+
+  static Handle<Value>
+  Reset (const Arguments& args)
+  {
+    Connection *connection = ObjectWrap::Unwrap<Connection>(args.This());
+
+    HandleScope scope;
+
+    bool r = connection->Reset();
+
+    if (!r) {
+      return ThrowException(Exception::Error(
+            String::New(connection->ErrorMessage())));
+    }
+
+    return Undefined();
+  }
+
+  static Handle<Value>
+  DispatchQuery (const Arguments& args)
+  {
+    Connection *connection = ObjectWrap::Unwrap<Connection>(args.This());
+
+    HandleScope scope;
+
+    if (args.Length() == 0 || !args[0]->IsString()) {
+      return ThrowException(Exception::TypeError(
+            String::New("First argument must be a string")));
+    }
+
+    String::Utf8Value query(args[0]->ToString());
+
+    bool r = connection->Query(*query);
+
+    if (!r) {
+      return ThrowException(Exception::Error(
+            String::New(connection->ErrorMessage())));
     }
 
     return Undefined();
@@ -183,7 +232,7 @@ class Connection : public EventEmitter {
     return scope.Close(String::NewSymbol(s));
   }
 
-  Connection ( ) : EventEmitter () 
+  Connection () : EventEmitter () 
   {
     connection_ = NULL;
 
@@ -201,6 +250,7 @@ class Connection : public EventEmitter {
     assert(connection_ == NULL);
   }
 
+ private:
   void ConnectEvent ()
   {
     PostgresPollingStatusType status;
@@ -237,7 +287,6 @@ class Connection : public EventEmitter {
     Finish();
   }
 
- private:
   void EmitResult (PGresult *result)
   {
     switch (PQresultStatus(result)) {
