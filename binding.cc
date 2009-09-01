@@ -8,7 +8,7 @@ using namespace node;
 
 #define READY_STATE_SYMBOL String::NewSymbol("readyState")
 
-class PostgresConnection : public EventEmitter {
+class Connection : public EventEmitter {
  public:
   static void
   Initialize (v8::Handle<v8::Object> target)
@@ -62,9 +62,7 @@ class PostgresConnection : public EventEmitter {
     /* If you have yet to call PQconnectPoll, i.e., just after the call to
      * PQconnectStart, behave as if it last returned PGRES_POLLING_WRITING.
      */
-    printf("ev_io_start = %p\n", ev_io_start);
     ev_io_start(EV_DEFAULT_ &write_watcher_);
-    printf("ev_io_start = %p\n", ev_io_start);
     
     Attach();
 
@@ -112,7 +110,7 @@ class PostgresConnection : public EventEmitter {
   {
     HandleScope scope;
 
-    PostgresConnection *connection = new PostgresConnection();
+    Connection *connection = new Connection();
     connection->Wrap(args.This());
 
     return args.This();
@@ -121,7 +119,7 @@ class PostgresConnection : public EventEmitter {
   static Handle<Value>
   Connect (const Arguments& args)
   {
-    PostgresConnection *connection = ObjectWrap::Unwrap<PostgresConnection>(args.This());
+    Connection *connection = ObjectWrap::Unwrap<Connection>(args.This());
 
     HandleScope scope;
 
@@ -143,7 +141,7 @@ class PostgresConnection : public EventEmitter {
   static Handle<Value>
   ReadyStateGetter (Local<String> property, const AccessorInfo& info)
   {
-    PostgresConnection *connection = ObjectWrap::Unwrap<PostgresConnection>(info.This());
+    Connection *connection = ObjectWrap::Unwrap<Connection>(info.This());
     assert(connection);
 
     assert(property == READY_STATE_SYMBOL);
@@ -185,7 +183,7 @@ class PostgresConnection : public EventEmitter {
     return scope.Close(String::NewSymbol(s));
   }
 
-  PostgresConnection ( ) : EventEmitter () 
+  Connection ( ) : EventEmitter () 
   {
     connection_ = NULL;
 
@@ -198,9 +196,8 @@ class PostgresConnection : public EventEmitter {
     write_watcher_.data = this;
   }
 
-  ~PostgresConnection ()
+  ~Connection ()
   {
-    printf("~PostgresConnection\n");
     assert(connection_ == NULL);
   }
 
@@ -243,7 +240,6 @@ class PostgresConnection : public EventEmitter {
  private:
   void EmitResult (PGresult *result)
   {
-    fprintf(stderr, "EmitResult");
     switch (PQresultStatus(result)) {
       case PGRES_EMPTY_QUERY:
       case PGRES_COMMAND_OK:
@@ -272,8 +268,6 @@ class PostgresConnection : public EventEmitter {
 
     assert(PQisnonblocking(connection_));
 
-    printf("PostgresConnection::Event!\n");
-
     if (connecting_) {
       ConnectEvent();
       return;
@@ -301,8 +295,7 @@ class PostgresConnection : public EventEmitter {
   static void
   io_event (EV_P_ ev_io *w, int revents)
   {
-    printf("PostgresConnection::io_event!\n");
-    PostgresConnection *connection = static_cast<PostgresConnection*>(w->data);
+    Connection *connection = static_cast<Connection*>(w->data);
     connection->Event(revents);
   }
 
@@ -318,5 +311,5 @@ init (Handle<Object> target)
 {
   HandleScope scope;
   target->Set(String::New("hello"), String::New("world"));
-  PostgresConnection::Initialize(target);
+  Connection::Initialize(target);
 }
