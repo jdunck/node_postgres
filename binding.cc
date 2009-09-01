@@ -1,6 +1,7 @@
 #include <libpq-fe.h>
 #include <node/node.h>
 #include <node/events.h>
+#include <assert.h>
 
 using namespace v8;
 using namespace node;
@@ -37,26 +38,37 @@ class PostgresConnection : public EventEmitter {
     connection_ = PQconnectStart(conninfo);
     if (!connection_) return false;
 
-    if (PQsetnonblocking(connection_, 1) == -1) goto error;
+    if (PQsetnonblocking(connection_, 1) == -1) {
+      PQfinish(connection_);
+      connection_ = NULL;
+      return false;
+    }
 
-    if (CONNECTION_BAD == PQstatus(connection_)) goto error; 
+    ConnStatusType status = PQstatus(connection_);
+
+    if (CONNECTION_BAD == status) {
+      PQfinish(connection_);
+      connection_ = NULL;
+      return false;
+    }
 
     connecting_ = true;
 
-    ev_io_set(&read_watcher_, PQsocket(connection_), EV_READ);
-    ev_io_set(&write_watcher_, PQsocket(connection_), EV_WRITE);
+    int fd = PQsocket(connection_);
+
+    ev_io_set(&read_watcher_, fd, EV_READ);
+    ev_io_set(&write_watcher_, fd, EV_WRITE);
 
     /* If you have yet to call PQconnectPoll, i.e., just after the call to
      * PQconnectStart, behave as if it last returned PGRES_POLLING_WRITING.
      */
+    printf("ev_io_start = %p\n", ev_io_start);
     ev_io_start(EV_DEFAULT_ &write_watcher_);
+    printf("ev_io_start = %p\n", ev_io_start);
+    
     Attach();
-    return true;
 
-  error:
-    PQfinish(connection_);
-    connection_ = NULL;
-    return false;
+    return true;
   }
 
   bool Reset ( )
@@ -86,6 +98,8 @@ class PostgresConnection : public EventEmitter {
 
   void Finish ( )
   {
+    ev_io_stop(EV_DEFAULT_ &write_watcher_);
+    ev_io_stop(EV_DEFAULT_ &read_watcher_);
     PQfinish(connection_);
     connection_ = NULL;
     Detach();
@@ -184,6 +198,12 @@ class PostgresConnection : public EventEmitter {
     write_watcher_.data = this;
   }
 
+  ~PostgresConnection ()
+  {
+    printf("~PostgresConnection\n");
+    assert(connection_ == NULL);
+  }
+
   void ConnectEvent ()
   {
     PostgresPollingStatusType status;
@@ -197,12 +217,13 @@ class PostgresConnection : public EventEmitter {
     if (status == PGRES_POLLING_READING) {
       ev_io_stop(EV_DEFAULT_ &write_watcher_);
       ev_io_start(EV_DEFAULT_ &read_watcher_);
-    } else if (status == PGRES_POLLING_WRITING) {
-      ev_io_stop(EV_DEFAULT_ &write_watcher_);
-      ev_io_start(EV_DEFAULT_ &read_watcher_);
-    }
+      return;
 
-    connecting_ = resetting_ = false;
+    } else if (status == PGRES_POLLING_WRITING) {
+      ev_io_stop(EV_DEFAULT_ &read_watcher_);
+      ev_io_start(EV_DEFAULT_ &write_watcher_);
+      return;
+    }
 
     if (status == PGRES_POLLING_OK) {
       if (connecting_) {
@@ -210,6 +231,7 @@ class PostgresConnection : public EventEmitter {
       } else {
         Emit("reset", 0, NULL);
       }
+      connecting_ = resetting_ = false;
       ev_io_start(EV_DEFAULT_ &read_watcher_);
       return;
     }
@@ -243,9 +265,16 @@ class PostgresConnection : public EventEmitter {
 
   void Event (int revents)
   {
+    if (revents & EV_ERROR) {
+      Emit("error", 0, NULL);
+      return;
+    }
+
     assert(PQisnonblocking(connection_));
 
-    if (!connecting_) {
+    printf("PostgresConnection::Event!\n");
+
+    if (connecting_) {
       ConnectEvent();
       return;
     }
@@ -272,6 +301,7 @@ class PostgresConnection : public EventEmitter {
   static void
   io_event (EV_P_ ev_io *w, int revents)
   {
+    printf("PostgresConnection::io_event!\n");
     PostgresConnection *connection = static_cast<PostgresConnection*>(w->data);
     connection->Event(revents);
   }

@@ -3,11 +3,14 @@ all: binding.node
 CFLAGS := $(shell node_g --cflags)
 LIBFLAGS := $(shell node_g --libs)
 
-binding.o: binding.cc
+binding.o: binding.cc Makefile
 	gcc ${CFLAGS} binding.cc -c -o binding.o
 
-binding.node: binding.o
-	gcc binding.o -o binding.node -shared -Wl,-Bdynamic -lpq
+binding.node: binding.o Makefile
+	gcc -shared -o binding.node  binding.o  \
+		-rdynamic 													  \
+		-Wl,-R/home/ryan/local/node/lib 			\
+		-lpq
 
 clean:
 	rm -f binding.o binding.node
