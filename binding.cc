@@ -363,9 +363,52 @@ class Connection : public EventEmitter {
     return scope.Close(tuples);
   }
 
+  Local<Value> BuildResultException (PGresult *result)
+  {
+    HandleScope scope;
+
+    char *primary_s = PQresultErrorField(result, PG_DIAG_MESSAGE_PRIMARY);
+    assert(primary_s);
+    Local<String> primary = String::New(primary_s);
+
+    Local<Value> error_v = Exception::Error(primary);
+    assert(error_v->IsObject());
+    Local<Object> error = Local<Object>::Cast(error_v);
+
+    char *full_s = PQresultErrorMessage(result);
+    if (full_s) {
+      error->Set(String::NewSymbol("full"), String::New(full_s));
+    }
+
+    char *detail_s = PQresultErrorField(result, PG_DIAG_MESSAGE_DETAIL);
+    if (detail_s) {
+      error->Set(String::NewSymbol("detail"), String::New(detail_s));
+    }
+
+    char *severity_s = PQresultErrorField(result, PG_DIAG_SEVERITY);
+    if (severity_s) {
+      error->Set(String::NewSymbol("severity"), String::New(severity_s));
+    }
+
+    /* TODO PG_DIAG_SQLSTATE
+     *      PG_DIAG_MESSAGE_HINT
+     *      PG_DIAG_STATEMENT_POSITION
+     *      PG_DIAG_INTERNAL_POSITION
+     *      PG_DIAG_INTERNAL_QUERY
+     *      PG_DIAG_CONTEXT
+     *      PG_DIAG_SOURCE_FILE
+     *      PG_DIAG_SOURCE_LINE
+     *      PG_DIAG_SOURCE_FUNCTION
+     */
+
+    return scope.Close(error);
+  }
+
   void EmitResult (PGresult *result)
   {
     Local<Value> tuples;
+    Local<Value> exception;
+
     switch (PQresultStatus(result)) {
       case PGRES_EMPTY_QUERY:
       case PGRES_COMMAND_OK:
@@ -380,11 +423,15 @@ class Connection : public EventEmitter {
       case PGRES_COPY_OUT:
       case PGRES_COPY_IN:
         assert(0 && "Not yet implemented.");
+        exception = Exception::Error(String::New("Not yet implemented"));
+        Emit("result", 1, &exception);
         break;
 
       case PGRES_BAD_RESPONSE:
       case PGRES_NONFATAL_ERROR:
       case PGRES_FATAL_ERROR:
+        exception = BuildResultException(result);
+        Emit("result", 1, &exception);
         break;
     }
   }

@@ -35,7 +35,11 @@ exports.createConnection = function (conninfo) {
     node.assert(c.currentQuery);
     var promise = c.currentQuery;
     c.currentQuery = null;
-    promise.emitSuccess([arg]);
+    if (arg instanceof Error)  {
+      promise.emitError([arg]);
+    } else {
+      promise.emitSuccess([arg]);
+    }
   });
 
   c.addListener("ready", function () {
