@@ -1,0 +1,12 @@
+At the moment this is an experiemental project to build external libraries
+into node.
+
+ 1. make
+
+ 2. make a table called "xxx" in a database called "test" on your local
+    postgres server
+
+ 3. node test.js
+
+
+
