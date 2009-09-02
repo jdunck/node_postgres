@@ -18,11 +18,11 @@ class Connection : public EventEmitter {
 
     Local<FunctionTemplate> t = FunctionTemplate::New(New);
 
-    //constructor_template = Persistent<FunctionTemplate>::New(t);
     t->Inherit(EventEmitter::constructor_template);
     t->InstanceTemplate()->SetInternalFieldCount(1);
 
     NODE_SET_PROTOTYPE_METHOD(t, "connect", Connect);
+    NODE_SET_PROTOTYPE_METHOD(t, "close", Close);
     NODE_SET_PROTOTYPE_METHOD(t, "reset", Reset);
     NODE_SET_PROTOTYPE_METHOD(t, "dispatchQuery", DispatchQuery);
 
@@ -104,12 +104,13 @@ class Connection : public EventEmitter {
     return true;
   }
 
-  void Finish ( )
+  void Close ( )
   {
     ev_io_stop(EV_DEFAULT_ &write_watcher_);
     ev_io_stop(EV_DEFAULT_ &read_watcher_);
     PQfinish(connection_);
     connection_ = NULL;
+    Emit("close", 0, NULL);
     Detach();
   }
 
@@ -151,6 +152,15 @@ class Connection : public EventEmitter {
             String::New(connection->ErrorMessage())));
     }
 
+    return Undefined();
+  }
+
+  static Handle<Value>
+  Close (const Arguments& args)
+  {
+    Connection *connection = ObjectWrap::Unwrap<Connection>(args.This());
+    HandleScope scope;
+    connection->Close();
     return Undefined();
   }
 
@@ -289,7 +299,7 @@ class Connection : public EventEmitter {
     }
     
     Emit("error", 0, NULL);
-    Finish();
+    Close();
   }
 
   Local<Value> BuildCell (PGresult *result, int row, int col)
@@ -383,7 +393,7 @@ class Connection : public EventEmitter {
   {
     if (revents & EV_ERROR) {
       Emit("error", 0, NULL);
-      Finish();
+      Close();
       return;
     }
 
@@ -397,7 +407,7 @@ class Connection : public EventEmitter {
     if (revents & EV_READ) {
       if (PQconsumeInput(connection_) == 0) {
         Emit("error", 0, NULL);
-        Finish();
+        Close();
         return;
       }
 

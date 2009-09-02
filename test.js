@@ -7,6 +7,10 @@ c.addListener("connect", function () {
   puts(c.readyState);
 });
 
+c.addListener("close", function () {
+  puts("connection closed.");
+});
+
 c.addListener("error", function () {
   puts("error");
 });
@@ -19,5 +23,5 @@ c.query("select * from xxx;").addCallback(function (rows) {
 c.query("select * from xxx limit 1;").addCallback(function (rows) {
   puts("result2:");
   p(rows);
-  c.reset();
+  c.close();
 });
