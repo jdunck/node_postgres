@@ -104,13 +104,18 @@ class Connection : public EventEmitter {
     return true;
   }
 
-  void Close ( )
+  void Close (Local<Value> exception = Local<Value>())
   {
+    HandleScope scope;
     ev_io_stop(EV_DEFAULT_ &write_watcher_);
     ev_io_stop(EV_DEFAULT_ &read_watcher_);
     PQfinish(connection_);
     connection_ = NULL;
-    Emit("close", 0, NULL);
+    if (exception.IsEmpty()) {
+      Emit("close", 0, NULL);
+    } else {
+      Emit("close", 1, &exception);
+    }
     Detach();
   }
 
@@ -298,8 +303,7 @@ class Connection : public EventEmitter {
       return;
     }
     
-    Emit("error", 0, NULL);
-    Close();
+    CloseConnectionWithError();
   }
 
   Local<Value> BuildCell (PGresult *result, int row, int col)
@@ -363,6 +367,18 @@ class Connection : public EventEmitter {
     return scope.Close(tuples);
   }
 
+  void CloseConnectionWithError (const char *message_s = NULL)
+  {
+    HandleScope scope;
+
+    if (!message_s) message_s = PQerrorMessage(connection_);
+    Local<String> message = String::New(message_s);
+    Local<Value> exception = Exception::Error(message);
+
+    Close(exception);
+  }
+
+  static inline
   Local<Value> BuildResultException (PGresult *result)
   {
     HandleScope scope;
@@ -439,8 +455,7 @@ class Connection : public EventEmitter {
   void Event (int revents)
   {
     if (revents & EV_ERROR) {
-      Emit("error", 0, NULL);
-      Close();
+      CloseConnectionWithError("connection closed");
       return;
     }
 
@@ -453,8 +468,7 @@ class Connection : public EventEmitter {
 
     if (revents & EV_READ) {
       if (PQconsumeInput(connection_) == 0) {
-        Emit("error", 0, NULL);
-        Close();
+        CloseConnectionWithError();
         return;
       }
 
