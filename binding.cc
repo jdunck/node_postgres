@@ -1,4 +1,5 @@
 #include <libpq-fe.h>
+#include "type-oids.h"
 #include <node/node.h>
 #include <node/events.h>
 #include <assert.h>
@@ -79,6 +80,13 @@ class Connection : public EventEmitter {
      * connection using PQconnectPoll */
     int r = PQresetStart(connection_);
     if (r == 0) return false;
+
+    if (PQsetnonblocking(connection_, 1) == -1) {
+      PQfinish(connection_);
+      connection_ = NULL;
+      return false;
+    }
+
     resetting_ = true;
     ev_io_set(&read_watcher_, PQsocket(connection_), EV_READ);
     ev_io_set(&write_watcher_, PQsocket(connection_), EV_WRITE);
@@ -251,7 +259,8 @@ class Connection : public EventEmitter {
   }
 
  private:
-  void ConnectEvent ()
+
+  void MakeConnection ()
   {
     PostgresPollingStatusType status;
     if (connecting_) {
@@ -273,11 +282,7 @@ class Connection : public EventEmitter {
     }
 
     if (status == PGRES_POLLING_OK) {
-      if (connecting_) {
-        Emit("connect", 0, NULL);
-      } else {
-        Emit("reset", 0, NULL);
-      }
+      Emit("connect", 0, NULL);
       connecting_ = resetting_ = false;
       ev_io_start(EV_DEFAULT_ &read_watcher_);
       return;
@@ -287,8 +292,70 @@ class Connection : public EventEmitter {
     Finish();
   }
 
+  Local<Value> BuildCell (PGresult *result, int row, int col)
+  {
+    HandleScope scope;
+
+    if (PQgetisnull(result, row, col)) return scope.Close(Null());
+
+    char *string = PQgetvalue(result, row, col);
+    int32_t n = 0, i = 0;
+
+    Oid t = PQftype(result, col);
+
+    Handle<Value> cell;
+
+    switch (t) {
+      case BOOLOID:
+        cell = *string == 't' ? True() : False();
+        break;
+
+      case INT8OID:
+      case INT4OID:
+      case INT2OID:
+        for (i = string[0] == '-' ? 1 : 0; string[i]; i++) {
+          n *= 10;
+          n += string[i] - '0';
+        }
+        if (string[0] == '-') n = -n;
+        cell = Integer::New(n);
+        break;
+
+      default:
+#ifndef NDEBUG
+        printf("Unhandled OID: %d\n", t);
+#endif
+        cell = String::New(string);
+    }
+    return scope.Close(cell); 
+  }
+
+  Local<Value> BuildTuples (PGresult *result)
+  {
+    HandleScope scope;
+
+    int nrows = PQntuples(result);
+    int ncols = PQnfields(result);
+    int row_index, col_index;
+
+    Local<Array> tuples = Array::New(nrows);
+
+    for (row_index = 0; row_index < nrows; row_index++) {
+      Local<Array> row = Array::New(ncols);
+      tuples->Set(Integer::New(row_index), row);
+
+      for (col_index = 0; col_index < ncols; col_index++) {
+        Local<Value> cell = BuildCell(result, row_index, col_index); 
+        row->Set(Integer::New(col_index), cell);
+      }
+    }
+
+    return scope.Close(tuples);
+  }
+
   void EmitResult (PGresult *result)
   {
+    Local<Value> tuples;
     switch (PQresultStatus(result)) {
       case PGRES_EMPTY_QUERY:
       case PGRES_COMMAND_OK:
@@ -296,6 +363,10 @@ class Connection : public EventEmitter {
         break;
 
       case PGRES_TUPLES_OK:
+        tuples = BuildTuples(result);
+        Emit("result", 1, &tuples);
+        break;
+
       case PGRES_COPY_OUT:
       case PGRES_COPY_IN:
         assert(0 && "Not yet implemented.");
@@ -312,13 +383,14 @@ class Connection : public EventEmitter {
   {
     if (revents & EV_ERROR) {
       Emit("error", 0, NULL);
+      Finish();
       return;
     }
 
     assert(PQisnonblocking(connection_));
 
-    if (connecting_) {
-      ConnectEvent();
+    if (connecting_ || resetting_) {
+      MakeConnection();
       return;
     }
 
@@ -328,12 +400,15 @@ class Connection : public EventEmitter {
         Finish();
         return;
       }
-      
-      PGresult *result;
-      while ((result = PQgetResult(connection_))) {
-        EmitResult(result);
-        PQclear(result);
-      }
+
+      if (!PQisBusy(connection_)) {
+        PGresult *result;
+        while ((result = PQgetResult(connection_))) {
+          EmitResult(result);
+          PQclear(result);
+        }
+        Emit("ready", 0, NULL);
+      }      
     }
 
     if (revents & EV_WRITE) {
@@ -359,6 +434,5 @@ extern "C" void
 init (Handle<Object> target) 
 {
   HandleScope scope;
-  target->Set(String::New("hello"), String::New("world"));
   Connection::Initialize(target);
 }

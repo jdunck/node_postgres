@@ -9,13 +9,19 @@ Connection.prototype.maybeDispatchQuery = function () {
   if (!this._queries) return;
   // If not connected, do not dispatch. 
   if (this.readyState != "OK") return;
-  if (this._queries.length > 0) this.dispatchQuery(this._queries[0]);
+  if (!this.currentQuery && this._queries.length > 0) {
+    this.currentQuery = this._queries.shift();
+    this.dispatchQuery(this.currentQuery.sql);
+  }
 };
 
 Connection.prototype.query = function (sql) {
   if (!this._queries) this._queries = [];
-  this._queries.push(sql);
+  var promise = new node.Promise;
+  promise.sql = sql;
+  this._queries.push(promise);
   this.maybeDispatchQuery();
+  return promise;
 };
 
 exports.createConnection = function (conninfo) {
@@ -25,8 +31,15 @@ exports.createConnection = function (conninfo) {
     c.maybeDispatchQuery();
   });
 
-  c.addListener("result", function () {
-    c._queries.shift();
+  c.addListener("result", function (arg) {
+    node.assert(c.currentQuery);
+    var promise = c.currentQuery;
+    c.currentQuery = null;
+    promise.emitSuccess([arg]);
+  });
+
+  c.addListener("ready", function () {
+    c.maybeDispatchQuery();
   });
 
   c.connect(conninfo);
