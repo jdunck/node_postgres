@@ -1,6 +1,6 @@
 all: binding.node
 
-CFLAGS := $(shell node_g --cflags) -I$(shell pg_config --includedir)
+CFLAGS := $(shell node_g --cflags) -I$(shell pg_config --includedir) -m32
 LIBS := -L$(shell pg_config --libdir) -lpq
 
 binding.o: binding.cc Makefile
