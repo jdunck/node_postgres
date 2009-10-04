@@ -1,6 +1,7 @@
+include("/utils.js");
 var postgres = require("postgres.js");
 
-var c = postgres.createConnection("host=/var/run/postgresql dbname=test");
+var c = postgres.createConnection("host=localhost dbname=ryan");
 
 c.addListener("connect", function () {
   puts("connected");
@@ -14,17 +15,17 @@ c.addListener("close", function (e) {
   }
 });
 
-c.query("select * from xxx;").addCallback(function (rows) {
+c.query("select * from test;").addCallback(function (rows) {
   puts("result1:");
   p(rows);
 });
 
-c.query("select * from xxx limit 1;").addCallback(function (rows) {
+c.query("select * from test limit 1;").addCallback(function (rows) {
   puts("result2:");
   p(rows);
 });
 
-c.query("select ____ from xxx limit 1;").addCallback(function (rows) {
+c.query("select ____ from test limit 1;").addCallback(function (rows) {
   puts("result3:");
   p(rows);
 }).addErrback(function (e) {

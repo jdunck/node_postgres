@@ -1,7 +1,7 @@
 #include <libpq-fe.h>
 #include "type-oids.h"
-#include <node/node.h>
-#include <node/events.h>
+#include <node.h>
+#include <events.h>
 #include <assert.h>
 
 using namespace v8;
