@@ -10,7 +10,6 @@ def set_options(opt):
 def configure(conf):
   conf.check_tool('compiler_cxx')
   conf.check_tool('node_addon')
-  conf.check_node_headers()
 
   pg_config = conf.find_program('pg_config', var='PG_CONFIG', mandatory=True)
   pg_libdir = os.popen("%s --libdir" % pg_config).readline().strip()
