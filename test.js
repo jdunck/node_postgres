@@ -1,4 +1,4 @@
-include("/utils.js");
+node.mixin(process, require("/utils.js"));
 var postgres = require("postgres.js");
 
 var c = postgres.createConnection("host=localhost dbname=ryan");
