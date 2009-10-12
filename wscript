@@ -31,7 +31,7 @@ def shutdown():
   import Options, shutil
   if not Options.commands['clean']:
     if os.path.exists('build/default/binding.node'):
-      shutil.copy('build/default/binding.node', 'binding.node')
+      os.symlink('build/default/binding.node', 'binding.node')
   else:
     if os.path.exists('binding.node'):
       os.unlink('binding.node')
