@@ -1,4 +1,4 @@
-var binding = require("binding.node");
+var binding = require("./binding");
 
 var Connection = binding.Connection;
 
@@ -17,7 +17,7 @@ Connection.prototype.maybeDispatchQuery = function () {
 
 Connection.prototype.query = function (sql) {
   if (!this._queries) this._queries = [];
-  var promise = new node.Promise;
+  var promise = new process.Promise;
   promise.sql = sql;
   this._queries.push(promise);
   this.maybeDispatchQuery();
@@ -32,7 +32,7 @@ exports.createConnection = function (conninfo) {
   });
 
   c.addListener("result", function (arg) {
-    node.assert(c.currentQuery);
+    process.assert(c.currentQuery);
     var promise = c.currentQuery;
     c.currentQuery = null;
     if (arg instanceof Error)  {

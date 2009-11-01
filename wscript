@@ -1,4 +1,6 @@
-import os 
+import Options
+from os import unlink, symlink, popen
+from os.path import exists 
 
 srcdir = '.'
 blddir = 'build'
@@ -12,10 +14,10 @@ def configure(conf):
   conf.check_tool('node_addon')
 
   pg_config = conf.find_program('pg_config', var='PG_CONFIG', mandatory=True)
-  pg_libdir = os.popen("%s --libdir" % pg_config).readline().strip()
+  pg_libdir = popen("%s --libdir" % pg_config).readline().strip()
   conf.env.append_value("LIBPATH_PG", pg_libdir)
   conf.env.append_value("LIB_PG", "pq")
-  pg_includedir = os.popen("%s --includedir" % pg_config).readline().strip()
+  pg_includedir = popen("%s --includedir" % pg_config).readline().strip()
   conf.env.append_value("CPPPATH_PG", pg_includedir)
 
 def build(bld):
@@ -28,10 +30,8 @@ def build(bld):
 def shutdown():
   # HACK to get binding.node out of build directory.
   # better way to do this?
-  import Options, shutil
-  if not Options.commands['clean']:
-    if os.path.exists('build/default/binding.node'):
-      os.symlink('build/default/binding.node', 'binding.node')
+  if Options.commands['clean']:
+    if exists('binding.node'): unlink('binding.node')
   else:
-    if os.path.exists('binding.node'):
-      os.unlink('binding.node')
+    if exists('build/default/binding.node') and not exists('binding.node'):
+      symlink('build/default/binding.node', 'binding.node')
